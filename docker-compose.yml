@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: peblotv
+      POSTGRES_USER: peblo
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-peblo_secret_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U peblo"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://peblo:${DB_PASSWORD:-peblo_secret_password}@db:5432/peblotv
+      STORAGE_BACKEND: local
+      STORAGE_PATH: /data/storage
+      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_here}
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001
+    volumes:
+      - storage_data:/data/storage
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  cms:
+    build: ./cms
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
+  viewer:
+    build: ./viewer
+    depends_on:
+      - api
+    ports:
+      - "3001:80"
+    volumes:
+      - storage_data:/data/storage
+
+volumes:
+  pgdata:
+  storage_data:
